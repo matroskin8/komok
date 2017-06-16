@@ -20,6 +20,20 @@ mongoCreds = {'host': '10.48.68.73', 'port': 27017}
 MONGO_CLI = pymongo.MongoClient(**mongoCreds).komok.aucs
 
 
+def normal(values: list, zero=None, one=None): # todo уметь принимать кастомный "0" и "1" - начало и конец торга
+    """
+    возвращает список со значениями пропорционально от 0 до 1
+    :param values: list
+    :param one:
+    :param zero:
+    :return: list
+    """
+    zero = min(values)
+    one = max(values)
+
+    return [(value - zero) / (one - zero) for value in values]
+
+
 class Bid:
     def __init__(self, name, date, bid):
         self.bid = int(bid)
@@ -54,10 +68,15 @@ class Bids:
     def json(self):
         return [bid.json() for bid in self.bids]
 
+    def normal(self):
+        return {'bids': [bid.bid for bid in self.bids],
+                'dates': [bid.dateSeconds for bid in self.bids]}
+
     def __repr__(self):
         bids = [bid.bid for bid in self.bids]
         if not bids: bids = [0]
         return '%s - %s' % (min(bids), max(bids))
+
 
 class Predict:
     def __init__(self, name, date, price):
@@ -108,10 +127,16 @@ class Predicts:
     def json(self):
         return [p.json() for p in self.ps]
 
+    def normal(self):
+        # zip([[p.price, p.dateSeconds] for p in self.ps])
+        return {'prices': normal([p.price for p in self.ps]),
+                'dates': normal([p.dateSeconds for p in self.ps])}
+
     def __repr__(self):
         ps = [ps.price for ps in self.ps]
         if not ps: ps = [0]
         return '%s - %s' % (min(ps), max(ps))
+
 
 class Auc:
     def __init__(self, id=None, **kwargs):
@@ -197,8 +222,10 @@ class Aucs:
     def __repr__(self):
         return '%s / %s' % (len([a for a in self.aucs if self.isActive]), len(self.aucs))
 
+if __name__ == '__main__':
 
-a = Auc('44:10454')
-# a.save()
-aa = Aucs()
-print()
+    a = Auc('44:10454')
+    a.predicts.normal()
+    # a.save()
+    aa = Aucs()
+    print()
