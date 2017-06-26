@@ -28,8 +28,13 @@ def normal(values: list, zero=None, one=None): # todo уметь принима�
     :param zero:
     :return: list
     """
+    if not values:
+        return []
+
     zero = min(values)
     one = max(values)
+    if not one - zero:
+        return []
 
     return [(value - zero) / (one - zero) for value in values]
 
@@ -69,8 +74,13 @@ class Bids:
         return [bid.json() for bid in self.bids]
 
     def normal(self):
-        return {'bids': [bid.bid for bid in self.bids],
-                'dates': [bid.dateSeconds for bid in self.bids]}
+        bids = normal([bid.bid for bid in self.bids])
+        dates = normal([bid.dateSeconds for bid in self.bids])
+        if not all([bids, dates]):
+            bids, dates = [], []
+
+        return {'bids': bids,
+                'dates': dates}
 
     def __repr__(self):
         bids = [bid.bid for bid in self.bids]
@@ -162,12 +172,12 @@ class Auc:
             self.fromWeb = False
         else:
             g.go(self.url)
-
+            print(self.url)
             getByXpath = lambda t, n=0: [i.text() for i in g.doc.select(t)][n]
             self.isActive = False
 
             self.title = getByXpath(".//div[@class='n3']/font[1]")
-            print(self.title)
+            # print(self.title)
             self.description = getByXpath(".//div[@class='n3']")
             self.strStarted = getByXpath(".//table[@cellpadding='2']//tr[@class='t1'][1]/td[@class='t3'][2]")
             self.started = datetime.datetime.strptime(self.strStarted, "%d-%m-%Y %H:%M")
@@ -199,14 +209,14 @@ class Auc:
         return {'description': self.description,
                 'url': self.url,
                 'bids': self.bids.json(),
-                'secondsLeft': None,
+                'secondsLeft': self.secondsLeft,
                 'started': self.started,
                 'predicts': self.predicts.json(),
                 'price': self.price,
                 'looks': self.looks,
                 'id': self.id,
                 'title': self.title,
-                'isActive': False}
+                'isActive': self.isActive}
 
 
 class Aucs:
@@ -224,8 +234,8 @@ class Aucs:
 
 if __name__ == '__main__':
 
-    a = Auc('44:10454')
-    a.predicts.normal()
+    # a = Auc('34:50600')
+    # a.predicts.normal()
     # a.save()
     aa = Aucs()
     print()
