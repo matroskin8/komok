@@ -150,8 +150,6 @@ class Predicts:
 
 class Auc:
     def __init__(self, id=None, **kwargs):
-        self.id = id
-        self.url = 'http://www.komok.com/topic.cgi?id=%s&h=1#h' % id
 
         self.isLogedIn = False
         self.secondsLeft = None
@@ -159,7 +157,7 @@ class Auc:
         self.isActive = kwargs.get('isActive', True)
 
         if kwargs and not self.isActive:
-
+            self.id = id
             self.title = kwargs['title']
             self.description = kwargs['description']
             self.strStarted = kwargs['started']
@@ -171,29 +169,35 @@ class Auc:
             self.parsed = kwargs.get('parced')
             self.fromWeb = False
         else:
-            g.go(self.url)
-            print(self.url)
-            getByXpath = lambda t, n=0: [i.text() for i in g.doc.select(t)][n]
-            self.isActive = False
+            self.loadFromWeb(id)
 
-            self.title = getByXpath(".//div[@class='n3']/font[1]")
-            # print(self.title)
-            self.description = getByXpath(".//div[@class='n3']")
-            self.strStarted = getByXpath(".//table[@cellpadding='2']//tr[@class='t1'][1]/td[@class='t3'][2]")
-            self.started = datetime.datetime.strptime(self.strStarted, "%d-%m-%Y %H:%M")
-            self.looks = getByXpath(".//table[@cellpadding='2']//tr[@class='t1'][2]/td[@class='t3'][2]")
-            self.price = int(getByXpath(".//table[@cellpadding='2']//tr[@class='t1'][6]/td[@class='t3'][2]").split()[0])
-            secondsLeft = g.doc.select(".//td[@style='padding-left: 10px']/script")
-            if secondsLeft:
-                self.isActive = True
-                self.bidStepLimits = [i.text() for i in g.doc.select(".//div[@style='background: #90ee90; padding: 15px; margin: 0px']")][0]
-                self.bidStepLimits = [int(i) for i in  regex4bidLimits.findall(self.bidStepLimits)[0]]
-                self.secondsLeft = reger4timeLeft.findall(secondsLeft[0].text())[0]
-            self.predicts = Predicts(g)
-            self.bids = Bids(g)
-            self.parsed = ''  # todo дату
-            self.fromWeb = True
-            self.save()
+    def loadFromWeb(self, id): # todo собрать dict и вызвать __imit__
+        self.id = id
+        self.url = 'http://www.komok.com/topic.cgi?id=%s&h=1#h' % id
+        g.go(self.url)
+        print(self.url)
+        getByXpath = lambda t, n=0: [i.text() for i in g.doc.select(t)][n]
+        self.isActive = False
+
+        self.title = getByXpath(".//div[@class='n3']/font[1]")
+        # print(self.title)
+        self.description = getByXpath(".//div[@class='n3']")
+        self.strStarted = getByXpath(".//table[@cellpadding='2']//tr[@class='t1'][1]/td[@class='t3'][2]")
+        self.started = datetime.datetime.strptime(self.strStarted, "%d-%m-%Y %H:%M")
+        self.looks = getByXpath(".//table[@cellpadding='2']//tr[@class='t1'][2]/td[@class='t3'][2]")
+        self.price = int(getByXpath(".//table[@cellpadding='2']//tr[@class='t1'][6]/td[@class='t3'][2]").split()[0])
+        secondsLeft = g.doc.select(".//td[@style='padding-left: 10px']/script")
+        if secondsLeft:
+            self.isActive = True
+            self.bidStepLimits = \
+            [i.text() for i in g.doc.select(".//div[@style='background: #90ee90; padding: 15px; margin: 0px']")][0]
+            self.bidStepLimits = [int(i) for i in regex4bidLimits.findall(self.bidStepLimits)[0]]
+            self.secondsLeft = reger4timeLeft.findall(secondsLeft[0].text())[0]
+        self.predicts = Predicts(g)
+        self.bids = Bids(g)
+        self.parsed = ''  # todo текущую дату
+        self.fromWeb = True
+        self.save()
 
     def makeBid(self):
         pass
@@ -201,9 +205,6 @@ class Auc:
     def save(self):
         j = self.json()
         MONGO_CLI.update({'id': j['id']}, j, upsert=True)
-
-    def login(self):
-        pass
 
     def json(self):
         return {'description': self.description,
@@ -222,7 +223,7 @@ class Auc:
 class Aucs:
     def __init__(self):
         self.aucs = [Auc(**auc) for auc in MONGO_CLI.find()]
-
+        print('Аукционов из базы - %s' % len(self.aucs))
         g.go(search500)  # .//table[@cellpadding='3']
         webIds = [regexp4idFromUrl.findall(i.attr('href')) for i in g.doc.select(".//table[@cellpadding='3']/tr/td//a")]
         webIds = {i[0] for i in webIds if i}
