@@ -1,9 +1,11 @@
 import datetime
 import re
 
+import logging
 import pymongo
 from grab import Grab
 
+# исключить '44:10454'
 
 # search500 = 'http://www.komok.com/?type_message=auction&forumpage_topics=500'
 search500 = 'http://www.komok.com/?forumpage_topics=500&type_message=auction&forumpage_days=5536'
@@ -13,14 +15,16 @@ reger4timeLeft = re.compile('rtimer=(\d+);')
 regex4date = re.compile('(\d{2}-\d{2}-\d{4} \d{2}:\d{2})')
 regex4bidLimits = re.compile('Минимальная ставка - (\d+) руб, максимальная - (\d+) рублей')
 
+
 g = Grab()
+g.setup(connect_timeout=5)
 
 mongoCreds = {'host': '10.48.68.73', 'port': 27017}
 
 MONGO_CLI = pymongo.MongoClient(**mongoCreds).komok.aucs
 
 
-def normal(values: list, zero=None, one=None): # todo уметь принимать кастомный "0" и "1" - начало и конец торга
+def normal(values: list, zero=0, one=None): # todo уметь принимать кастомный "0" и "1" - начало и конец торга
     """
     возвращает список со значениями пропорционально от 0 до 1
     :param values: list
@@ -31,10 +35,10 @@ def normal(values: list, zero=None, one=None): # todo уметь принима�
     if not values:
         return []
 
-    zero = min(values)
-    one = max(values)
-    if not one - zero:
-        return []
+    # zero = zero or min(values)
+    one = one or max(values)
+    # if not one - zero:
+    #     return []
 
     return [(value - zero) / (one - zero) for value in values]
 
@@ -75,7 +79,7 @@ class Bids:
 
     def normal(self):
         bids = normal([bid.bid for bid in self.bids])
-        dates = normal([bid.dateSeconds for bid in self.bids])
+        dates = normal([bid.dateSeconds for bid in self.bids], min([bid.dateSeconds for bid in self.bids]))
         if not all([bids, dates]):
             bids, dates = [], []
 
@@ -108,7 +112,7 @@ class Predict:
         return '%s - %s' % (self.price, self.strDate)
 
 
-class Predicts:
+class Predicts: # todo не добавлять предсказания сделанные позже окончания аукциона
     def __init__(self, g):
         self.ps = []
         if isinstance(g, list):
@@ -137,10 +141,14 @@ class Predicts:
     def json(self):
         return [p.json() for p in self.ps]
 
-    def normal(self):
-        # zip([[p.price, p.dateSeconds] for p in self.ps])
-        return {'prices': normal([p.price for p in self.ps]),
-                'dates': normal([p.dateSeconds for p in self.ps])}
+    def normal(self, zero=0, onePrice=None, oneDate=None):
+        if self.ps:
+            return {'prices': normal([p.price for p in self.ps], one=onePrice),
+                    'dates': normal([p.dateSeconds for p in self.ps], min([p.dateSeconds for p in self.ps]), one=oneDate)}
+        else:
+            return {'prices': [],
+                    'dates': []}
+
 
     def __repr__(self):
         ps = [ps.price for ps in self.ps]
@@ -174,7 +182,11 @@ class Auc:
     def loadFromWeb(self, id): # todo собрать dict и вызвать __imit__
         self.id = id
         self.url = 'http://www.komok.com/topic.cgi?id=%s&h=1#h' % id
-        g.go(self.url)
+        try:
+            g.go(self.url)
+        except Exception as e:
+            logging.exception(self.url, e)
+            return None
         print(self.url)
         getByXpath = lambda t, n=0: [i.text() for i in g.doc.select(t)][n]
         self.isActive = False
@@ -219,18 +231,29 @@ class Auc:
                 'title': self.title,
                 'isActive': self.isActive}
 
+    def __str__(self):
+        return '%s %s' % (self.id, self.title)
+
 
 class Aucs:
-    def __init__(self):
+    def __init__(self, fromWeb=False):
         self.aucs = [Auc(**auc) for auc in MONGO_CLI.find()]
         print('Аукционов из базы - %s' % len(self.aucs))
+        if fromWeb:
+            self.getNew()
+        self.sort()
+
+    def getNew(self):
         g.go(search500)  # .//table[@cellpadding='3']
         webIds = [regexp4idFromUrl.findall(i.attr('href')) for i in g.doc.select(".//table[@cellpadding='3']/tr/td//a")]
         webIds = {i[0] for i in webIds if i}
         loadedIds = [j.id for j in self.aucs]
         [self.aucs.append(Auc(i)) for i in webIds if i not in loadedIds]
 
-    def __repr__(self):
+    def sort(self):
+        self.aucs.sort(key=lambda a: a.started, reverse=True)
+
+    def __str__(self):
         return '%s / %s' % (len([a for a in self.aucs if self.isActive]), len(self.aucs))
 
 if __name__ == '__main__':
@@ -238,5 +261,5 @@ if __name__ == '__main__':
     # a = Auc('34:50600')
     # a.predicts.normal()
     # a.save()
-    aa = Aucs()
+    aa = Aucs(True)
     print()
