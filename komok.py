@@ -239,9 +239,14 @@ class Auc:
         return '%s %s' % (self.id, self.title)
 
 
-class Aucs:
+class Aucs(list):
+    def append(self, a):
+        super().append(Auc(**a))
+
+class Komok:
     def __init__(self, fromWeb=False):
-        self.aucs = [Auc(**auc) for auc in MONGO_CLI.find()]
+        self.aucs = Aucs()
+        [self.aucs.append(auc) for auc in MONGO_CLI.find()]
         print('Аукционов из базы - %s' % len(self.aucs))
         if fromWeb:
             self.getNew()
@@ -261,9 +266,9 @@ class Aucs:
 
     def buildUsers(self):
         bids = []
-        [[bids.append(bid.name) for bid in auc.bids.bids] for auc in aa.aucs]
+        [[bids.append(bid.name) for bid in auc.bids.bids] for auc in self.aucs]
         preds = []
-        [[preds.append(p.name) for p in auc.predicts.ps] for auc in aa.aucs]
+        [[preds.append(p.name) for p in auc.predicts.ps] for auc in self.aucs]
         users = set(bids + preds)
         countedBids = Counter(bids)
         countedPreds = Counter(preds)
@@ -281,5 +286,5 @@ if __name__ == '__main__':
     # a = Auc('34:50600')
     # a.predicts.normal()
     # a.save()
-    aa = Aucs(True)
+    aa = Komok(False)
     print()

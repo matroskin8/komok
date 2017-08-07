@@ -1,9 +1,9 @@
 import matplotlib.pyplot as plt
 from numpy import linspace
 
-from komok import Aucs
+from komok import Komok
 
-a = Aucs()
+a = Komok()
 
 b = [([b.bid for b in auc.bids.bids], [b.date for b in auc.bids.bids]) for auc in a.aucs]
 p = [([p.price for p in auc.predicts.ps], [p.date for p in auc.predicts.ps]) for auc in a.aucs]
