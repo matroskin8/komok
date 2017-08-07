@@ -2,12 +2,16 @@ import datetime
 import re
 
 import logging
+from collections import Counter
+
 import pymongo
 from grab import Grab
 
 # исключить '44:10454'
 
 # search500 = 'http://www.komok.com/?type_message=auction&forumpage_topics=500'
+from Users import User, Users
+
 search500 = 'http://www.komok.com/?forumpage_topics=500&type_message=auction&forumpage_days=5536'
 regexp4idFromUrl = re.compile('cgi\?id=(\d+:\d+)')
 regex4bid = re.compile("(\d{2}.\d{2}.\d{4} \d{2}:\d{2}:\d{2}). (.+) сделал ставку (\d+)")  # ungreedy
@@ -242,6 +246,8 @@ class Aucs:
         if fromWeb:
             self.getNew()
         self.sort()
+        self.users = Users()
+        self.buildUsers()
 
     def getNew(self):
         g.go(search500)  # .//table[@cellpadding='3']
@@ -252,6 +258,20 @@ class Aucs:
 
     def sort(self):
         self.aucs.sort(key=lambda a: a.started, reverse=True)
+
+    def buildUsers(self):
+        bids = []
+        [[bids.append(bid.name) for bid in auc.bids.bids] for auc in aa.aucs]
+        preds = []
+        [[preds.append(p.name) for p in auc.predicts.ps] for auc in aa.aucs]
+        users = set(bids + preds)
+        countedBids = Counter(bids)
+        countedPreds = Counter(preds)
+        users = [user for user in users if 'отменил свою ставку' not in user]
+
+        for user in users:
+            self.users.append(user, countedBids.get(user), countedPreds.get(user))
+        print()
 
     def __str__(self):
         return '%s / %s' % (len([a for a in self.aucs if self.isActive]), len(self.aucs))
