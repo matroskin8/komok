@@ -63,35 +63,38 @@ class Bid:
     def json(self):
         return {'name': self.name, 'date': self.date, 'bid': self.bid}
 
-    def __repr__(self):
+    def __str__(self):
         return str(self.bid)
 
 
-class Bids:
-    def __init__(self, g):
-        if isinstance(g, list):
-            self.bids = [Bid(**i) for i in g if i]
-        else:
-            history = g.doc.select(".//div[@id='ahistory']")[0].text()
-            a = [[{'name': name, 'date': date, 'bid': bid} for date, name, bid in regex4bid.findall(i)]
-                    for i in history.split('руб.')]
-            self.bids = [Bid(**i[0]) for i in a if i]
-        # todo обрабатывать отмену ставки
+class Bids(list):
+    # def __init__(self, g):
+    #     if isinstance(g, list):
+    #         self.bids = [Bid(**i) for i in g if i]
+    #     else:
+    #         history = g.doc.select(".//div[@id='ahistory']")[0].text()
+    #         a = [[{'name': name, 'date': date, 'bid': bid} for date, name, bid in regex4bid.findall(i)]
+    #                 for i in history.split('руб.')]
+    #         self.bids = [Bid(**i[0]) for i in a if i]
+    #     # todo обрабатывать отмену ставки
+
+    def append(self, name, date, bid):
+        super().append(Bid(name, date, bid))
 
     def json(self):
-        return [bid.json() for bid in self.bids]
+        return [bid.json() for bid in self]
 
     def normal(self):
-        bids = normal([bid.bid for bid in self.bids])
-        dates = normal([bid.dateSeconds for bid in self.bids], min([bid.dateSeconds for bid in self.bids]))
+        bids = normal([bid.bid for bid in self])
+        dates = normal([bid.dateSeconds for bid in self], min([bid.dateSeconds for bid in self]))
         if not all([bids, dates]):
             bids, dates = [], []
 
         return {'bids': bids,
                 'dates': dates}
 
-    def __repr__(self):
-        bids = [bid.bid for bid in self.bids]
+    def __str__(self):
+        bids = [bid.bid for bid in self]
         if not bids: bids = [0]
         return '%s - %s' % (min(bids), max(bids))
 
@@ -112,50 +115,28 @@ class Predict:
     def json(self):
         return {'name': self.name, 'date': self.date, 'price': self.price}
 
-    def __repr__(self):
+    def __str__(self):
         return '%s - %s' % (self.price, self.strDate)
 
 
-class Predicts: # todo не добавлять предсказания сделанные позже окончания аукциона
-    def __init__(self, g):
-        self.ps = []
-        if isinstance(g, list):
-            self.ps = [Predict(**i) for i in g if i]
-        else:
-            self.ps = self.method1(g)
-            if not [p for p in self.ps if p.price]:
-                self.ps = self.method2(g)
+class Predicts(list): # todo не добавлять предсказания сделанные позже окончания аукциона
 
-    def method1(self, g):
-        ps = []
-        for i in g.doc.select(".//table[@cellpadding='3']//tr/td[@class='t2' or 't1'][@valign='top']/a/../.."):
-            ps.append([i.select("td/a")[0].text(),
-                       i.select("td/table//tr/td[@class='date1']")[0].text(),
-                       i.select("td/table//tr/td[@class='n']")[0].text()])
-        return [Predict(*i) for i in ps if i[2].isdigit()]
-
-    def method2(self, g):
-        ps = []
-        for i in g.doc.select(".//table[@cellpadding='3']//tr/td[@class='t2' or 't1'][@width='82%']/.."):
-            ps.append([i.select("td[@valign='top']").text(),
-                       i.select("td/table//tr/td[@class='date1']")[0].text(),
-                       i.select("td/table//tr/td[@class='n']")[0].text()])
-        return [Predict(*i) for i in ps if i[2].isdigit()]
+    def append(self, name, date, price):
+        super().append(Predict(name, date, price))
 
     def json(self):
-        return [p.json() for p in self.ps]
+        return [p.json() for p in self]
 
     def normal(self, zero=0, onePrice=None, oneDate=None):
         if self.ps:
-            return {'prices': normal([p.price for p in self.ps], one=onePrice),
-                    'dates': normal([p.dateSeconds for p in self.ps], min([p.dateSeconds for p in self.ps]), one=oneDate)}
+            return {'prices': normal([p.price for p in self], one=onePrice),
+                    'dates': normal([p.dateSeconds for p in self], min([p.dateSeconds for p in self]), one=oneDate)}
         else:
             return {'prices': [],
                     'dates': []}
 
-
-    def __repr__(self):
-        ps = [ps.price for ps in self.ps]
+    def __str__(self):
+        ps = [ps.price for ps in self]
         if not ps: ps = [0]
         return '%s - %s' % (min(ps), max(ps))
 
@@ -167,6 +148,8 @@ class Auc:
         self.secondsLeft = None
 
         self.isActive = kwargs.get('isActive', True)
+        self.predicts = Predicts()
+        self.bids = Bids()
 
         if kwargs and not self.isActive:
             self.id = id
@@ -176,14 +159,30 @@ class Auc:
             self.started = kwargs['started']
             self.looks = kwargs['looks']
             self.price = kwargs['price']
-            self.predicts = Predicts(kwargs['predicts'])
-            self.bids = Bids(kwargs['bids'])
+            [self.predicts.append(**i) for i in kwargs['predicts']]
+            [self.bids.append(**i) for i in kwargs['bids']]
             self.parsed = kwargs.get('parced')
             self.fromWeb = False
         else:
             self.loadFromWeb(id)
 
     def loadFromWeb(self, id): # todo собрать dict и вызвать __imit__
+        def predMethod1(g):
+            ps = []
+            for i in g.doc.select(".//table[@cellpadding='3']//tr/td[@class='t2' or 't1'][@valign='top']/a/../.."):
+                ps.append([i.select("td/a")[0].text(),
+                           i.select("td/table//tr/td[@class='date1']")[0].text(),
+                           i.select("td/table//tr/td[@class='n']")[0].text()])
+            return [i for i in ps if i[2].isdigit()]
+
+        def predMethod2(g):
+            ps = []
+            for i in g.doc.select(".//table[@cellpadding='3']//tr/td[@class='t2' or 't1'][@width='82%']/.."):
+                ps.append([i.select("td[@valign='top']").text(),
+                           i.select("td/table//tr/td[@class='date1']")[0].text(),
+                           i.select("td/table//tr/td[@class='n']")[0].text()])
+            return [i for i in ps if i[2].isdigit()]
+
         self.id = id
         self.url = 'http://www.komok.com/topic.cgi?id=%s&h=1#h' % id
         try:
@@ -209,9 +208,17 @@ class Auc:
             [i.text() for i in g.doc.select(".//div[@style='background: #90ee90; padding: 15px; margin: 0px']")][0]
             self.bidStepLimits = [int(i) for i in regex4bidLimits.findall(self.bidStepLimits)[0]]
             self.secondsLeft = reger4timeLeft.findall(secondsLeft[0].text())[0]
-        self.predicts = Predicts(g)
-        self.bids = Bids(g)
-        self.parsed = ''  # todo текущую дату
+
+        [self.predicts.append(*i) for i in predMethod1(g)]
+        if not [p for p in self.predicts if p.price]:
+            [self.predicts.append(*i) for i in predMethod2(g)]
+
+        history = g.doc.select(".//div[@id='ahistory']")[0].text()
+        a = [[{'name': name, 'date': date, 'bid': bid} for date, name, bid in regex4bid.findall(i)]
+             for i in history.split('руб.')]
+        [self.bids.append(**i[0]) for i in a if i]
+
+        self.parsed = datetime.datetime.now()
         self.fromWeb = True
         self.save()
 
@@ -268,7 +275,7 @@ class Komok:
         bids = []
         [[bids.append(bid.name) for bid in auc.bids.bids] for auc in self.aucs]
         preds = []
-        [[preds.append(p.name) for p in auc.predicts.ps] for auc in self.aucs]
+        [[preds.append(p.name) for p in auc.predicts] for auc in self.aucs]
         users = set(bids + preds)
         countedBids = Counter(bids)
         countedPreds = Counter(preds)
